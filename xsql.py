@@ -2,13 +2,14 @@
 
 def _check_args(func):
     def wrapper(self, *args, **kwargs):
-        if args[0].count("%s") != len(args)-1:
+        if args[0].count("%s") != len(args) - 1:
             raise Exception("not match key:" + args[0])
         return func(self, *args, **kwargs)
+
     return wrapper
 
-class Sql(object):
 
+class Sql(object):
     OP_INSERT = 1
     OP_UPDATE = 2
     OP_DEL = 3
@@ -23,9 +24,10 @@ class Sql(object):
         self.__values = []
         self.__updates = []
         self.__args = []
-        self.__op = Sql.OP_QUERY #
-        self.__sql = "" 
-    
+        self.__op = Sql.OP_QUERY  #
+        self.__sql = ""
+        self.__ignore = False
+
     def fields(self, *select_fields):
         self.__fields = select_fields
         return self
@@ -36,19 +38,23 @@ class Sql(object):
     def where_or(self, key, *values):
         return self.__where_with_condition("OR", key, values)
 
-    def values(self, *values):
+    def insert(self, *values):
         self.__op = Sql.OP_INSERT
-        if len(values) != len(self.__fields):
-            raise Exception("not match values and fields")
+        # if len(values) != len(self.__fields):
+        #     raise Exception("not match values and fields")
         arr = []
         for v in values:
-            if isinstance(v,(int, float)):
+            if isinstance(v, (int, float)):
                 arr.append(str(v))
             else:
                 arr.append("%s")
                 self.__args.append(v)
         self.__values.append("({})".format(",".join(arr)))
         return self
+
+    def insert_ignore(self, *value):
+        self.__ignore = True
+        return self.insert(value)
 
     def update(self, key, value=None):
         self.__op = Sql.OP_UPDATE
@@ -71,7 +77,7 @@ class Sql(object):
         elif self.__op == Sql.OP_UPDATE:
             sql_str, args = self._update_str()
         self.__sql = sql_str
-        return sql_str,args
+        return sql_str, args
 
     def _update_str(self):
         sql = "UPDATE {} SET ".format(self.__tab_name) + ",".join(self.__updates)
@@ -94,9 +100,12 @@ class Sql(object):
             sql += v[0]
             self.__args.extend(v[1])
         return sql, self.__args
-    
+
     def _insert_str(self):
-        sql = "INSERT INTO {}({}) VALUES".format(self.__tab_name, ",".join(self.__fields))
+        if self.__ignore:
+            sql = "INSERT IGNORE INTO {}({}) VALUES".format(self.__tab_name, ",".join(self.__fields))
+        else:
+            sql = "INSERT INTO {}({}) VALUES".format(self.__tab_name, ",".join(self.__fields))
         sql += ",".join(self.__values)
         return sql, self.__args
 
@@ -120,7 +129,7 @@ class Sql(object):
                 values.extend(sub_values)
         return key, values
 
-    def __where_with_condition(self,condition, key, *values):
+    def __where_with_condition(self, condition, key, *values):
         new_values = []
         for v in values:
             key, sub_values = self.__match_key_value(key, v)
@@ -128,14 +137,11 @@ class Sql(object):
         if len(self.__wheres) == 0:
             self.__wheres.append((' (' + key + ')', new_values))
         else:
-            self.__wheres.append((' ' + condition +' (' + key + ')', new_values))
+            self.__wheres.append((' ' + condition + ' (' + key + ')', new_values))
         return self
 
+
 if __name__ == '__main__':
-    s = Sql("test").update("a=%s", 5).where("c=%s",1).where_or("d=%s","111")
+    s = Sql("test").update("a=%s", 1).update("b=3").where("c=%s", "aaa")
     print(s.sql()[0])
     print(s.sql()[1])
-    
-
-
-
