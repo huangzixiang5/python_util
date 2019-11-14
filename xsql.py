@@ -1,5 +1,6 @@
 # coding:utf-8
 
+
 def _check_args(func):
     def wrapper(self, *args, **kwargs):
         if args[0].count("%s") != len(args) - 1:
@@ -23,6 +24,7 @@ class Sql(object):
         self.__wheres = []
         self.__values = []
         self.__updates = []
+        self.__duplicates = []
         self.__args = []
         self.__op = Sql.OP_QUERY  #
         self.__sql = ""
@@ -33,10 +35,10 @@ class Sql(object):
         return self
 
     def where(self, key, *values):
-        return self.__where_with_condition("AND", key, values)
+        return self.__where_with_condition("AND", key, *values)
 
     def where_or(self, key, *values):
-        return self.__where_with_condition("OR", key, values)
+        return self.__where_with_condition("OR", key, *values)
 
     def insert(self, *values):
         self.__op = Sql.OP_INSERT
@@ -54,14 +56,24 @@ class Sql(object):
 
     def insert_ignore(self, *value):
         self.__ignore = True
-        return self.insert(value)
+        return self.insert(*value)
 
-    def update(self, key, value=None):
+    def on_duplicate(self, key, *values):
+        for v in values:
+            if isinstance(v, (int, float)):
+                key = key.replace(self.PLACEHOLDER, str(v), 1)
+            elif v:
+                self.__args.append(v)
+        self.__duplicates.append(key)
+        return self
+
+    def update(self, key, *values):
         self.__op = Sql.OP_UPDATE
-        if isinstance(value, (int, float)):
-            key = key.replace(self.PLACEHOLDER, str(value))
-        elif value:
-            self.__args.append(value)
+        for v in values:
+            if isinstance(v, (int, float)):
+                key = key.replace(self.PLACEHOLDER, str(v), 1)
+            elif v:
+                self.__args.append(v)
         self.__updates.append(key)
         return self
 
@@ -90,10 +102,10 @@ class Sql(object):
         return sql, self.__args
 
     def _query_str(self):
-        if len(self.__fields) == 0:
+        if not self.__fields:
             self.__fields = ["*"]
         sql = "SELECT {} FROM {} ".format(",".join(self.__fields), self.__tab_name)
-        if len(self.__wheres) == 0:
+        if not self.__wheres:
             return sql, self.__args
         sql += "WHERE"
         for v in self.__wheres:
@@ -107,6 +119,8 @@ class Sql(object):
         else:
             sql = "INSERT INTO {}({}) VALUES".format(self.__tab_name, ",".join(self.__fields))
         sql += ",".join(self.__values)
+        if self.__duplicates:
+            sql += " ON DUPLICATE KEY UPDATE " + ",".join(self.__duplicates)
         return sql, self.__args
 
     @classmethod
@@ -142,6 +156,6 @@ class Sql(object):
 
 
 if __name__ == '__main__':
-    s = Sql("test").update("a=%s", 1).update("b=3").where("c=%s", "aaa")
+    s = Sql("test").where("id in (%s) and name=%s", [1, 2, 3, 4], "my")
     print(s.sql()[0])
     print(s.sql()[1])
